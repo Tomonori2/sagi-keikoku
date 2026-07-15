@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>マイク・文字起こしテスト</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: sans-serif; background: #14203a; color: #fff;
+      padding: 20px; line-height: 1.7;
+    }
+    h1 { font-size: 20px; margin-bottom: 16px; }
+    .box {
+      background: rgba(255,255,255,0.1); border-radius: 12px;
+      padding: 16px; margin-bottom: 16px; font-size: 16px;
+    }
+    .big-btn {
+      width: 100%; padding: 24px; font-size: 22px; font-weight: bold;
+      border: none; border-radius: 16px; color: #fff; cursor: pointer;
+      background: #e0443e; margin-bottom: 16px;
+    }
+    #state { font-size: 18px; font-weight: bold; color: #ffd93d; }
+    #words {
+      min-height: 100px; font-size: 20px; background: rgba(0,0,0,0.3);
+      border-radius: 12px; padding: 16px; margin-top: 12px; white-space: pre-wrap;
+    }
+    .label { font-size: 13px; color: rgba(255,255,255,0.6); }
+  </style>
+</head>
+<body>
+  <h1>🎤 マイク・文字起こしテスト</h1>
+
+  <div class="box">
+    <div class="label">① この端末の対応状況</div>
+    <div id="support">確認中…</div>
+  </div>
+
+  <button class="big-btn" onclick="startTest()">▶ テスト開始</button>
+
+  <div class="box">
+    <div class="label">② 今の状態</div>
+    <div id="state">まだ始めていません</div>
+    <div class="label" style="margin-top:12px;">③ 聞き取った言葉</div>
+    <div id="words">（ここに話した言葉が出ます）</div>
+  </div>
+
+  <script>
+    var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    document.getElementById('support').textContent =
+      '音声認識API: ' + (SpeechRec ? '✅ 対応しています' : '❌ 非対応です') +
+      '　/　ブラウザ: ' + navigator.userAgent.replace(/^.*(Chrome|Firefox|Safari|SamsungBrowser)[\/ ]?([0-9]+).*$/, '$1 $2');
+
+    var rec = null, running = false;
+
+    function setState(t) { document.getElementById('state').textContent = t; }
+
+    function startTest() {
+      if (!SpeechRec) { setState('この端末は音声認識に対応していません'); return; }
+      if (running) { running = false; if (rec) rec.stop(); setState('停止しました'); return; }
+
+      rec = new SpeechRec();
+      rec.lang = 'ja-JP';
+      rec.continuous = true;
+      rec.interimResults = true;
+
+      rec.onstart = function () { setState('① 開始しました。話しかけてください…'); };
+      rec.onaudiostart = function () { setState('② マイクの音を受け取り始めました'); };
+      rec.onspeechstart = function () { setState('③ 声を検知しました！'); };
+      rec.onresult = function (e) {
+        var txt = '';
+        for (var i = 0; i < e.results.length; i++) txt += e.results[i][0].transcript;
+        document.getElementById('words').textContent = txt;
+        setState('④ 聞き取れています！');
+      };
+      rec.onerror = function (e) { setState('⚠️ エラー: ' + e.error); };
+      rec.onend = function () {
+        if (running) { try { rec.start(); } catch (x) {} }
+        else setState('終了しました');
+      };
+
+      running = true;
+      try { rec.start(); setState('開始しようとしています…'); }
+      catch (x) { setState('開始に失敗: ' + x.message); }
+    }
+  </script>
+</body>
+</html>
