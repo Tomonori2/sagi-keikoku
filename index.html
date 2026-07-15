@@ -120,10 +120,11 @@
     <div class="note">→ 少しでも怪しければ、いったん電話を切って家族に相談！</div>
   </div>
 
-  <!-- 録音してますと流す（大きく） -->
-  <button class="call-btn" id="speak-btn" onclick="speakWarning()">🔊 録音してますと流す</button>
+  <!-- 起動時に自動で「録音してます」を読み上げ。ブロックされた時だけボタンが出る -->
+  <button class="call-btn" id="speak-btn" onclick="speakWarning()" style="display:none;">🔊 録音してますと流す</button>
   <div class="hint" style="max-width:620px; text-align:center;">
-    📢 相手に聞かせるには、通話を<b>スピーカーフォン（ハンズフリー）</b>にしてから押してね
+    📢 アプリを開くと自動で「録音してます」と音声が流れます。<br>
+    相手に聞かせるには、通話を<b>スピーカーフォン（ハンズフリー）</b>にしてね
   </div>
 
   <!-- 設定 -->
@@ -181,30 +182,48 @@
     });
 
     // ===== 「録音してます」を音声で流す =====
+    // アプリを開くと自動で読み上げる。ブラウザの自動再生制限でブロックされた時だけ、
+    // 手動ボタンを表示する（保険）。
     var WARNING_TEXT = 'この通話は、詐欺被害防止のため、すべて録音されています。';
 
     function speakWarning() {
       var btn = document.getElementById('speak-btn');
 
       if (!('speechSynthesis' in window)) {
-        alert('このスマホは音声読み上げに対応していないようです');
+        btn.style.display = 'none';
         return;
       }
 
-      // 連打されたら、前の読み上げを止めてから流し直す
+      // 連打・二重再生を防ぐため、前の読み上げを止めてから流し直す
       speechSynthesis.cancel();
 
+      var started = false;
       var u = new SpeechSynthesisUtterance(WARNING_TEXT);
       u.lang = 'ja-JP';
       u.rate = 0.9;   // 少しゆっくり、はっきり
       u.volume = 1.0; // 最大音量
 
-      btn.textContent = '🔊 流しています…';
-      u.onend = function () { btn.textContent = '🔊 録音してますと流す'; };
+      u.onstart = function () {
+        started = true;
+        btn.textContent = '🔊 流しています…';
+      };
+      u.onend = function () { btn.textContent = '🔊 もう一度流す'; };
       u.onerror = function () { btn.textContent = '🔊 録音してますと流す'; };
 
       speechSynthesis.speak(u);
+
+      // 3秒たっても読み上げが始まらない＝自動再生がブロックされた。ボタンを出す
+      setTimeout(function () {
+        if (!started && !speechSynthesis.speaking) {
+          btn.style.display = 'block';
+        }
+      }, 3000);
     }
+
+    // 起動したら自動で読み上げる（読み上げエンジンの準備を少し待つ）
+    window.addEventListener('load', function () {
+      setTimeout(speakWarning, 800);
+    });
 
     // ===== 録音ファイルを選ぶ =====
     function uploadFile(input) {
