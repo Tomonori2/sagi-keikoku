@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>詐欺電話撃退アプリ</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#7a1f1f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="詐欺撃退">
+  <link rel="apple-touch-icon" href="icon.svg">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Helvetica Neue', sans-serif;
+      min-height: 100vh;
+      color: #fff;
+      background: linear-gradient(160deg, #7a1f1f 0%, #a83232 40%, #5c1717 100%);
+      padding: 20px 14px 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: background 0.3s;
+    }
+    body.danger { background: linear-gradient(160deg, #ff2b2b 0%, #b30000 60%, #7a0000 100%); }
+
+    header { text-align: center; margin-bottom: 18px; }
+    header .icon { font-size: 56px; line-height: 1; }
+    header h1 { font-size: 24px; margin-top: 6px; }
+    header p { font-size: 13px; color: rgba(255,255,255,0.85); margin-top: 6px; }
+
+    .card {
+      width: 100%; max-width: 620px;
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.18);
+      border-radius: 18px;
+      padding: 20px;
+      margin-bottom: 16px;
+      backdrop-filter: blur(8px);
+    }
+    .card .label { font-size: 12px; color: rgba(255,255,255,0.7); letter-spacing: 1px; margin-bottom: 12px; }
+
+    .btn {
+      border: none; border-radius: 12px; color: #fff;
+      padding: 12px 20px; font-size: 15px; font-weight: bold; cursor: pointer;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    .btn:hover { opacity: 0.9; }
+    .btn:active { transform: scale(0.97); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-key   { background: linear-gradient(135deg, #f7b733, #fc4a1a); }
+    .btn-ghost { background: rgba(255,255,255,0.15); font-weight: normal; font-size: 13px; padding: 8px 14px; }
+
+    .big-btn {
+      width: 100%; padding: 26px; font-size: 22px; font-weight: bold;
+      border: none; border-radius: 20px; color: #fff; cursor: pointer;
+      background: linear-gradient(135deg, #ff5f5f, #b30000);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    }
+    .big-btn.recording {
+      background: linear-gradient(135deg, #ffd93d, #fc4a1a);
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.03); } }
+
+    .call-btn {
+      display: block; width: 100%; text-align: center; text-decoration: none;
+      padding: 20px; font-size: 20px; font-weight: bold; color: #fff;
+      border-radius: 20px; margin-top: 12px;
+      background: linear-gradient(135deg, #4ecdc4, #2f8f88);
+    }
+
+    .status { font-size: 15px; color: rgba(255,255,255,0.9); margin-top: 12px; text-align: center; }
+
+    .key-input, .tel-input {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,0.3); border-radius: 10px;
+      background: rgba(0,0,0,0.18); color: #fff;
+      padding: 11px 14px; font-size: 14px; margin-bottom: 8px;
+    }
+    .key-input::placeholder, .tel-input::placeholder { color: rgba(255,255,255,0.5); }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+
+    .caption {
+      margin-top: 14px; padding: 14px; border-radius: 12px;
+      background: rgba(0,0,0,0.25); font-size: 17px; line-height: 1.8;
+      white-space: pre-wrap; min-height: 60px; max-height: 260px; overflow-y: auto;
+    }
+
+    .warn-banner {
+      display: none; margin-top: 14px; padding: 16px; border-radius: 14px;
+      background: #ffd93d; color: #7a0000; font-size: 18px; font-weight: bold;
+      text-align: center;
+    }
+    .warn-banner.show { display: block; animation: flash 0.6s infinite alternate; }
+    @keyframes flash { from { opacity: 1; } to { opacity: 0.5; } }
+
+    ul.checklist { list-style: none; }
+    ul.checklist li {
+      font-size: 15px; line-height: 1.8; padding: 6px 0 6px 30px; position: relative;
+    }
+    ul.checklist li::before { content: '⚠️'; position: absolute; left: 0; }
+
+    .hint { font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 8px; line-height: 1.6; }
+    .hint a { color: #ffd93d; }
+    .spin { display: inline-block; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body id="body">
+  <header>
+    <div class="icon">🛡️</div>
+    <h1>詐欺電話撃退アプリ</h1>
+    <p>スピーカーホンにして「録音開始」を押してから話してね</p>
+  </header>
+
+  <!-- 設定 -->
+  <div class="card">
+    <div class="label">設定（最初の1回だけ）</div>
+    <input type="tel" class="tel-input" id="family-tel" placeholder="家族の電話番号（例: 09012345678）">
+    <input type="password" class="key-input" id="api-key" placeholder="（任意）Groq APIキー gsk_... ※AI判定を使う場合のみ">
+    <div class="row">
+      <button class="btn btn-key" onclick="saveSettings()">💾 保存</button>
+      <span class="status" id="settings-status" style="margin-top:0;"></span>
+    </div>
+    <div class="hint">
+      🔒 番号・キーは<b>このスマホの中だけ</b>に保存されます。<br>
+      🔑 Groqキー（無料）→ <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>
+    </div>
+  </div>
+
+  <!-- 録音・判定 -->
+  <div class="card">
+    <div class="label">通話チェック</div>
+    <button class="big-btn" id="rec-btn" onclick="toggleCheck()">🔴 録音開始</button>
+    <div class="status" id="rec-status">電話がかかってきたら、スピーカーホンにしてから押してね</div>
+    <div id="warn-banner" class="warn-banner">⚠️ 危険なキーワードを検知しました！</div>
+    <div class="caption" id="caption">（ここに話した内容がリアルタイムで表示されます）</div>
+  </div>
+
+  <!-- 結果 -->
+  <div class="card" id="result-card" style="display:none;">
+    <div class="label">チェック結果</div>
+    <div class="status" id="risk-status" style="font-size:18px; font-weight:bold;"></div>
+    <div class="caption" id="detected-list"></div>
+    <div class="row" style="margin-top:12px;">
+      <button class="btn btn-key" onclick="aiJudge()" id="ai-btn">🤖 AIに詳しく判定してもらう</button>
+      <button class="btn btn-ghost" onclick="downloadRecording()">💾 録音を保存</button>
+    </div>
+    <div class="caption" id="ai-result" style="display:none;"></div>
+  </div>
+
+  <a class="call-btn" id="call-btn" href="#" onclick="return callFamily()">📞 家族に電話する</a>
+
+  <!-- チェックリスト -->
+  <div class="card">
+    <div class="label">こんな話が出たら詐欺を疑って！</div>
+    <ul class="checklist">
+      <li>「ATMに行って」「振り込んで」とお金の話をされた</li>
+      <li>キャッシュカード・暗証番号・口座番号を聞かれた</li>
+      <li>「今すぐ」「誰にも言わないで」と急かされた・脅された</li>
+      <li>「オレだけど」「風邪で声が変わった」と名乗った</li>
+    </ul>
+  </div>
+
+  <script>
+    var KEY_STORAGE = 'sagi_groq_key';
+    var TEL_STORAGE = 'sagi_family_tel';
+
+    // ===== 危険ワード辞書 =====
+    var DANGER_WORDS = {
+      'お金・振込': ['ATM', 'エーティーエム', '振込', '振り込', '現金', '保証金', '還付金', '口座', 'お金が必要'],
+      '個人情報': ['キャッシュカード', '暗証番号', 'マイナンバー', '口座番号', '生年月日を教え'],
+      '急かし・脅し': ['今すぐ', '至急', '誰にも言うな', '誰にも言わないで', '内緒', 'バレる'],
+      'なりすまし': ['オレだけど', '俺だけど', '風邪ひいた', '声が違う', '携帯番号が変わった']
+    };
+
+    // ===== 設定の保存・読み込み =====
+    function getKey() { return (localStorage.getItem(KEY_STORAGE) || '').trim(); }
+    function getTel() { return (localStorage.getItem(TEL_STORAGE) || '').trim(); }
+
+    function saveSettings() {
+      var tel = document.getElementById('family-tel').value.trim();
+      var key = document.getElementById('api-key').value.trim();
+      var st = document.getElementById('settings-status');
+      if (tel) localStorage.setItem(TEL_STORAGE, tel);
+      if (key) localStorage.setItem(KEY_STORAGE, key);
+      st.textContent = '✅ 保存しました';
+      document.getElementById('api-key').value = '';
+    }
+
+    window.addEventListener('load', function () {
+      if (getTel()) document.getElementById('family-tel').value = getTel();
+      if (getKey()) document.getElementById('settings-status').textContent = '✅ 設定済み';
+      // アプリを開いた瞬間に自動で録音・文字起こしを開始する（手動タップでもMacroDroid等の自動起動でも同じ挙動）
+      startCheck(true);
+    });
+
+    // 警告音声はブラウザの自動再生制限で鳴らないことがあるため、最初の画面タップでも鳴らし直す
+    ['click', 'touchstart'].forEach(function (evt) {
+      document.addEventListener(evt, function onceSpeak() {
+        speakWarning();
+        document.removeEventListener(evt, onceSpeak);
+      }, { once: true });
+    });
+
+    // ===== 家族に電話 =====
+    function callFamily() {
+      var tel = getTel();
+      if (!tel) {
+        alert('先に「設定」で家族の電話番号を保存してね');
+        return false;
+      }
+      location.href = 'tel:' + tel.replace(/[^0-9+]/g, '');
+      return false;
+    }
+
+    // ===== 通話チェック（録音＋リアルタイム文字起こし）=====
+    var mediaRecorder = null, chunks = [], mediaStream = null;
+    var recognition = null, recognizing = false;
+    var finalTranscript = '';
+    var warnedCategories = {};
+    var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    function toggleCheck() {
+      if (recognizing || (mediaRecorder && mediaRecorder.state === 'recording')) {
+        stopCheck();
+      } else {
+        startCheck(false);
+      }
+    }
+
+    function startCheck(auto) {
+      if (recognizing || (mediaRecorder && mediaRecorder.state === 'recording')) return;
+      finalTranscript = '';
+      warnedCategories = {};
+      document.getElementById('caption').textContent = '';
+      document.getElementById('result-card').style.display = 'none';
+      document.getElementById('warn-banner').classList.remove('show');
+      document.getElementById('body').classList.remove('danger');
+
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(function (stream) {
+          mediaStream = stream;
+          chunks = [];
+          mediaRecorder = new MediaRecorder(stream);
+          mediaRecorder.ondataavailable = function (e) { if (e.data.size > 0) chunks.push(e.data); };
+          mediaRecorder.start();
+          setRecUI(true);
+
+          // 警告アナウンス（スピーカーホン経由で相手にも聞こえる）
+          speakWarning();
+
+          if (SpeechRec) {
+            startRecognition();
+          } else {
+            document.getElementById('rec-status').textContent =
+              '🔴 録音中（この端末はリアルタイム文字起こし非対応。終了後に録音を保存できます）';
+          }
+        })
+        .catch(function () {
+          if (auto) {
+            document.getElementById('rec-status').textContent =
+              '⚠️ マイクを自動で開始できませんでした。ボタンを押してね';
+          } else {
+            alert('マイクを使えませんでした。ブラウザのマイク許可を確認してね。');
+          }
+        });
+    }
+
+    function speakWarning() {
+      if (!('speechSynthesis' in window)) return;
+      var u = new SpeechSynthesisUtterance('これから通話を録音し、内容を確認します。');
+      u.lang = 'ja-JP';
+      window.speechSynthesis.speak(u);
+    }
+
+    function startRecognition() {
+      recognition = new SpeechRec();
+      recognition.lang = 'ja-JP';
+      recognition.continuous = true;
+      recognition.interimResults = true;
+
+      recognition.onresult = function (e) {
+        var interim = '';
+        for (var i = e.resultIndex; i < e.results.length; i++) {
+          var t = e.results[i][0].transcript;
+          if (e.results[i].isFinal) finalTranscript += t + '\n';
+          else interim += t;
+        }
+        document.getElementById('caption').textContent = finalTranscript + interim;
+        scanDanger(finalTranscript + interim);
+      };
+
+      recognition.onend = function () {
+        if (recognizing) {
+          try { recognition.start(); } catch (e) {}
+        }
+      };
+
+      recognition.onerror = function () {};
+
+      recognizing = true;
+      recognition.start();
+      document.getElementById('rec-status').textContent = '🔴 録音中・文字起こし中…（もう一度押すと終了）';
+    }
+
+    function scanDanger(text) {
+      var hitCategories = [];
+      Object.keys(DANGER_WORDS).forEach(function (cat) {
+        var words = DANGER_WORDS[cat];
+        for (var i = 0; i < words.length; i++) {
+          if (text.indexOf(words[i]) !== -1) { hitCategories.push(cat); break; }
+        }
+      });
+      if (hitCategories.length > 0) {
+        var newHit = hitCategories.some(function (c) { return !warnedCategories[c]; });
+        hitCategories.forEach(function (c) { warnedCategories[c] = true; });
+        document.getElementById('warn-banner').textContent =
+          '⚠️ 危険なサインを検知：' + hitCategories.join('、');
+        document.getElementById('warn-banner').classList.add('show');
+        document.getElementById('body').classList.add('danger');
+        if (newHit && navigator.vibrate) navigator.vibrate([300, 100, 300, 100, 300]);
+      }
+    }
+
+    function setRecUI(isRec) {
+      var btn = document.getElementById('rec-btn');
+      if (isRec) {
+        btn.textContent = '⏹ 終了する';
+        btn.classList.add('recording');
+      } else {
+        btn.textContent = '🔴 録音開始';
+        btn.classList.remove('recording');
+      }
+    }
+
+    function stopCheck() {
+      recognizing = false;
+      if (recognition) { try { recognition.stop(); } catch (e) {} }
+      if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.onstop = function () {
+          if (mediaStream) mediaStream.getTracks().forEach(function (t) { t.stop(); });
+          showResult();
+        };
+        mediaRecorder.stop();
+      } else {
+        showResult();
+      }
+      setRecUI(false);
+      document.getElementById('rec-status').textContent = '通話チェックを終了しました';
+    }
+
+    function showResult() {
+      var cats = Object.keys(warnedCategories);
+      var riskEl = document.getElementById('risk-status');
+      var listEl = document.getElementById('detected-list');
+      var level = cats.length >= 2 ? '危険度：高' : (cats.length === 1 ? '危険度：中' : '危険度：低（危険なサインは見つかりませんでした）');
+      riskEl.textContent = level;
+      listEl.textContent = (finalTranscript || '（文字起こしがありません）') +
+        (cats.length ? '\n\n検出したサイン：' + cats.join('、') : '');
+      document.getElementById('result-card').style.display = 'block';
+    }
+
+    // ===== AIに詳しく判定してもらう（Groq）=====
+    function aiJudge() {
+      var key = getKey();
+      var out = document.getElementById('ai-result');
+      if (!key) {
+        alert('先に「設定」でGroqのAPIキーを登録してね。console.groq.com/keys で無料で取れます。');
+        return;
+      }
+      if (!finalTranscript.trim()) {
+        alert('文字起こしがありません（この端末はリアルタイム文字起こしに対応していないかもしれません）');
+        return;
+      }
+      out.style.display = 'block';
+      out.innerHTML = '<span class="spin">🤖</span> AIが判定中…';
+
+      fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': 'Bearer ' + key,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'llama-3.3-70b-versatile',
+          messages: [
+            {
+              role: 'system',
+              content: 'あなたは高齢者を詐欺電話から守るアシスタントです。渡された通話の文字起こしを読み、' +
+                '詐欺の可能性が高いかどうかを「危険度：高／中／低」で判定し、その理由を簡単な言葉で3行以内で説明してください。'
+            },
+            { role: 'user', content: finalTranscript }
+          ]
+        })
+      })
+        .then(function (r) {
+          return r.json().then(function (data) {
+            if (!r.ok) throw new Error((data.error && data.error.message) || ('エラー HTTP ' + r.status));
+            return data;
+          });
+        })
+        .then(function (data) {
+          out.textContent = data.choices[0].message.content;
+        })
+        .catch(function (err) {
+          out.textContent = '😅 ' + (err.message || '通信エラーが起きました');
+        });
+    }
+
+    // ===== 録音の保存 =====
+    function downloadRecording() {
+      if (!chunks.length) { alert('保存できる録音がありません'); return; }
+      var blob = new Blob(chunks, { type: 'audio/webm' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      var now = new Date();
+      var name = '通話録音_' + now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') +
+        String(now.getDate()).padStart(2, '0') + '_' + String(now.getHours()).padStart(2, '0') +
+        String(now.getMinutes()).padStart(2, '0') + '.webm';
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ===== スマホアプリ化（Service Worker登録）=====
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('sw.js');
+      });
+    }
+  </script>
+</body>
+</html>
