@@ -113,6 +113,7 @@
     <div class="icon">🛡️</div>
     <h1>詐欺電話撃退アプリ</h1>
     <p>スピーカーホンにして「録音開始」を押してから話してね</p>
+    <p id="diag" style="font-size:11px; color:rgba(255,255,255,0.6); margin-top:4px;"></p>
   </header>
 
   <!-- 設定 -->
@@ -193,6 +194,9 @@
     window.addEventListener('load', function () {
       if (getTel()) document.getElementById('family-tel').value = getTel();
       if (getKey()) document.getElementById('settings-status').textContent = '✅ 設定済み';
+      document.getElementById('diag').textContent =
+        '診断: 音声認識API ' + (SpeechRec ? '対応' : '非対応') +
+        ' / 表示モード ' + (window.matchMedia('(display-mode: standalone)').matches ? 'アプリ(standalone)' : 'ブラウザ');
       // アプリを開いた瞬間に自動で録音・文字起こしを開始する（手動タップでもMacroDroid等の自動起動でも同じ挙動）
       startCheck(true);
     });
@@ -283,6 +287,14 @@
       recognition.lang = 'ja-JP';
       recognition.continuous = true;
       recognition.interimResults = true;
+
+      recognition.onstart = function () {
+        document.getElementById('rec-status').textContent = '🔴 録音中（文字起こし: 開始OK・話しかけて待って）';
+      };
+
+      recognition.onaudiostart = function () {
+        document.getElementById('rec-status').textContent = '🔴 録音中（文字起こし: マイク音声を受け取り中）';
+      };
 
       recognition.onresult = function (e) {
         var interim = '';
