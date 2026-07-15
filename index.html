@@ -70,21 +70,24 @@
     .btn-ghost { background: rgba(255,255,255,0.15); font-weight: normal; font-size: 13px; padding: 8px 14px; }
 
     .call-btn {
-      display: block; width: 100%; text-align: center; text-decoration: none;
+      display: block; width: 100%; max-width: 620px; text-align: center; text-decoration: none;
+      border: none; cursor: pointer; font-family: inherit;
       padding: 22px; font-size: 22px; font-weight: bold; color: #fff;
       border-radius: 20px; margin-top: 4px;
       background: linear-gradient(135deg, #4ecdc4, #2f8f88);
       box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+      transition: transform 0.1s, opacity 0.2s;
     }
+    .call-btn:active { transform: scale(0.97); }
 
     .status { font-size: 14px; color: rgba(255,255,255,0.9); margin-top: 10px; }
-    .key-input, .tel-input {
+    .key-input {
       width: 100%;
       border: 1px solid rgba(255,255,255,0.3); border-radius: 10px;
       background: rgba(0,0,0,0.18); color: #fff;
       padding: 11px 14px; font-size: 14px; margin-bottom: 8px;
     }
-    .key-input::placeholder, .tel-input::placeholder { color: rgba(255,255,255,0.5); }
+    .key-input::placeholder { color: rgba(255,255,255,0.5); }
     .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
 
     .result {
@@ -117,20 +120,22 @@
     <div class="note">→ 少しでも怪しければ、いったん電話を切って家族に相談！</div>
   </div>
 
-  <!-- 家族に電話（大きく） -->
-  <a class="call-btn" id="call-btn" href="#" onclick="return callFamily()">📞 家族に電話する</a>
+  <!-- 録音してますと流す（大きく） -->
+  <button class="call-btn" id="speak-btn" onclick="speakWarning()">🔊 録音してますと流す</button>
+  <div class="hint" style="max-width:620px; text-align:center;">
+    📢 相手に聞かせるには、通話を<b>スピーカーフォン（ハンズフリー）</b>にしてから押してね
+  </div>
 
   <!-- 設定 -->
   <div class="card" style="margin-top:16px;">
     <div class="label">設定（最初の1回だけ）</div>
-    <input type="tel" class="tel-input" id="family-tel" placeholder="家族の電話番号（例: 09012345678）">
     <input type="password" class="key-input" id="api-key" placeholder="（任意）Groq APIキー gsk_... ※録音判定を使う場合のみ">
     <div class="row">
       <button class="btn btn-key" onclick="saveSettings()">💾 保存</button>
       <span class="status" id="settings-status" style="margin-top:0;"></span>
     </div>
     <div class="hint">
-      🔒 番号・キーは<b>このスマホの中だけ</b>に保存されます。<br>
+      🔒 キーは<b>このスマホの中だけ</b>に保存されます。<br>
       🔑 Groqキー（無料）→ <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a>
     </div>
   </div>
@@ -157,38 +162,48 @@
   <script>
     var GROQ_BASE = 'https://api.groq.com/openai/v1';
     var KEY_STORAGE = 'sagi_groq_key';
-    var TEL_STORAGE = 'sagi_family_tel';
     var MAX_SIZE = 25 * 1024 * 1024;
     var lastTranscript = '';
 
     // ===== 設定の保存・読み込み =====
     function getKey() { return (localStorage.getItem(KEY_STORAGE) || '').trim(); }
-    function getTel() { return (localStorage.getItem(TEL_STORAGE) || '').trim(); }
 
     function saveSettings() {
-      var tel = document.getElementById('family-tel').value.trim();
       var key = document.getElementById('api-key').value.trim();
       var st = document.getElementById('settings-status');
-      if (tel) localStorage.setItem(TEL_STORAGE, tel);
       if (key) localStorage.setItem(KEY_STORAGE, key);
       st.textContent = '✅ 保存しました';
       document.getElementById('api-key').value = '';
     }
 
     window.addEventListener('load', function () {
-      if (getTel()) document.getElementById('family-tel').value = getTel();
       if (getKey()) document.getElementById('settings-status').textContent = '✅ 設定済み';
     });
 
-    // ===== 家族に電話 =====
-    function callFamily() {
-      var tel = getTel();
-      if (!tel) {
-        alert('先に「設定」で家族の電話番号を保存してね');
-        return false;
+    // ===== 「録音してます」を音声で流す =====
+    var WARNING_TEXT = 'この通話は、詐欺被害防止のため、すべて録音されています。';
+
+    function speakWarning() {
+      var btn = document.getElementById('speak-btn');
+
+      if (!('speechSynthesis' in window)) {
+        alert('このスマホは音声読み上げに対応していないようです');
+        return;
       }
-      location.href = 'tel:' + tel.replace(/[^0-9+]/g, '');
-      return false;
+
+      // 連打されたら、前の読み上げを止めてから流し直す
+      speechSynthesis.cancel();
+
+      var u = new SpeechSynthesisUtterance(WARNING_TEXT);
+      u.lang = 'ja-JP';
+      u.rate = 0.9;   // 少しゆっくり、はっきり
+      u.volume = 1.0; // 最大音量
+
+      btn.textContent = '🔊 流しています…';
+      u.onend = function () { btn.textContent = '🔊 録音してますと流す'; };
+      u.onerror = function () { btn.textContent = '🔊 録音してますと流す'; };
+
+      speechSynthesis.speak(u);
     }
 
     // ===== 録音ファイルを選ぶ =====
