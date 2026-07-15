@@ -299,7 +299,10 @@
         }
       };
 
-      recognition.onerror = function () {};
+      recognition.onerror = function (e) {
+        document.getElementById('rec-status').textContent =
+          '🔴 録音中（文字起こしエラー: ' + e.error + '）';
+      };
 
       recognizing = true;
       recognition.start();
