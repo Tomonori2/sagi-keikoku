@@ -220,6 +220,7 @@
     var mediaRecorder = null, chunks = [], mediaStream = null;
     var recognition = null, recognizing = false;
     var finalTranscript = '';
+    var lastCaptionText = '';
     var warnedCategories = {};
     var SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -234,6 +235,7 @@
     function startCheck(auto) {
       if (recognizing || (mediaRecorder && mediaRecorder.state === 'recording')) return;
       finalTranscript = '';
+      lastCaptionText = '';
       warnedCategories = {};
       document.getElementById('caption').textContent = '';
       document.getElementById('result-card').style.display = 'none';
@@ -289,8 +291,9 @@
           if (e.results[i].isFinal) finalTranscript += t + '\n';
           else interim += t;
         }
-        document.getElementById('caption').textContent = finalTranscript + interim;
-        scanDanger(finalTranscript + interim);
+        lastCaptionText = finalTranscript + interim;
+        document.getElementById('caption').textContent = lastCaptionText;
+        scanDanger(lastCaptionText);
       };
 
       recognition.onend = function () {
@@ -356,6 +359,10 @@
     }
 
     function showResult() {
+      // スマホの音声認識は「確定」の合図が来ないことがあるため、未確定分も含めて残す
+      if (!finalTranscript.trim() && lastCaptionText.trim()) {
+        finalTranscript = lastCaptionText;
+      }
       var cats = Object.keys(warnedCategories);
       var riskEl = document.getElementById('risk-status');
       var listEl = document.getElementById('detected-list');
