@@ -1,5 +1,5 @@
 // 詐欺電話撃退アプリ – サービスワーカー（スマホアプリ化用）
-const CACHE = 'sagi-keikoku-v1';
+const CACHE = 'sagi-keikoku-v2';
 const SHELL = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png'];
 
 self.addEventListener('install', (e) => {
