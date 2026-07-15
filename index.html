@@ -246,33 +246,16 @@
       document.getElementById('warn-banner').classList.remove('show');
       document.getElementById('body').classList.remove('danger');
 
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(function (stream) {
-          mediaStream = stream;
-          chunks = [];
-          mediaRecorder = new MediaRecorder(stream);
-          mediaRecorder.ondataavailable = function (e) { if (e.data.size > 0) chunks.push(e.data); };
-          mediaRecorder.start();
-          setRecUI(true);
-
-          // 警告アナウンス（スピーカーホン経由で相手にも聞こえる）
-          speakWarning();
-
-          if (SpeechRec) {
-            startRecognition();
-          } else {
-            document.getElementById('rec-status').textContent =
-              '🔴 録音中（この端末はリアルタイム文字起こし非対応。終了後に録音を保存できます）';
-          }
-        })
-        .catch(function () {
-          if (auto) {
-            document.getElementById('rec-status').textContent =
-              '⚠️ マイクを自動で開始できませんでした。ボタンを押してね';
-          } else {
-            alert('マイクを使えませんでした。ブラウザのマイク許可を確認してね。');
-          }
-        });
+      // 【実験モード】録音（MediaRecorder）は一旦止めて、文字起こし（音声認識）だけを動かす。
+      // Androidで「録音と文字起こしの同時利用でマイクが競合する」問題の切り分けのため。
+      if (!SpeechRec) {
+        document.getElementById('rec-status').textContent =
+          '⚠️ この端末は音声認識に対応していません';
+        return;
+      }
+      setRecUI(true);
+      speakWarning();
+      startRecognition();
     }
 
     function speakWarning() {
@@ -448,11 +431,14 @@
       URL.revokeObjectURL(url);
     }
 
-    // ===== スマホアプリ化（Service Worker登録）=====
+    // ===== デバッグ中：古い画面が残らないようService Workerとキャッシュを解除 =====
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', function () {
-        navigator.serviceWorker.register('sw.js');
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        regs.forEach(function (r) { r.unregister(); });
       });
+    }
+    if (window.caches && caches.keys) {
+      caches.keys().then(function (keys) { keys.forEach(function (k) { caches.delete(k); }); });
     }
   </script>
 </body>
