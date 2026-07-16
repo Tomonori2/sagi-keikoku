@@ -232,6 +232,27 @@
       sendForTranscribe(file);
     }
 
+    // ===== 電話アプリなどの「共有」から送られてきた録音を受け取る =====
+    function loadSharedFileIfAny() {
+      if (location.search.indexOf('shared=1') === -1) return;
+      history.replaceState(null, '', location.pathname);
+
+      if (!('caches' in window)) return;
+      caches.open('sagi-keikoku-share').then(function (cache) {
+        cache.match('shared-audio-file').then(function (res) {
+          if (!res) return;
+          cache.delete('shared-audio-file');
+          var name = decodeURIComponent(res.headers.get('X-Shared-Filename') || '共有された録音');
+          res.blob().then(function (blob) {
+            var file = new File([blob], name, { type: blob.type });
+            sendForTranscribe(file);
+          });
+        });
+      });
+    }
+
+    window.addEventListener('load', loadSharedFileIfAny);
+
     function requireKey() {
       var k = getKey();
       if (!k) {
