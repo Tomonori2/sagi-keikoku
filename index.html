@@ -109,6 +109,24 @@
     <div class="note">→ 少しでも怪しければ、いったん電話を切って家族に相談！</div>
   </div>
 
+  <!-- 危険な電話番号の記録・検索 -->
+  <div class="card" style="margin-top:16px;">
+    <div class="label">📵 危険な電話番号</div>
+    <div class="row">
+      <input type="text" class="key-input" id="check-number" placeholder="電話番号を入力して調べる" style="flex:1; min-width:160px; margin-bottom:0;" inputmode="tel">
+      <button class="btn btn-key" onclick="checkNumber()">🔍 調べる</button>
+    </div>
+    <div class="result" id="check-result" style="display:none;"></div>
+
+    <div id="danger-list" style="margin-top:14px;"></div>
+
+    <div class="row" style="margin-top:10px;">
+      <input type="text" class="key-input" id="add-number" placeholder="番号" style="flex:1; min-width:120px; margin-bottom:0;" inputmode="tel">
+      <input type="text" class="key-input" id="add-note" placeholder="メモ（任意）" style="flex:1; min-width:120px; margin-bottom:0;">
+      <button class="btn btn-ghost" onclick="addDangerNumber()">＋手動で追加</button>
+    </div>
+  </div>
+
   <!-- 設定 -->
   <div class="card" style="margin-top:16px;">
     <div class="label">設定（最初の1回だけ）</div>
@@ -129,6 +147,8 @@
     <p style="font-size:13px; color:rgba(255,255,255,0.85); margin-bottom:12px; line-height:1.7;">
       Pixelの通話録音などの音声ファイルを選ぶと、文字にして詐欺の危険度を判定します。
     </p>
+    <input type="text" class="key-input" id="phone-number" placeholder="この録音の電話番号（わかれば・ファイル名から自動入力されることもあります）" inputmode="tel" oninput="showNumberWarningIfAny()">
+    <div class="result" id="number-warning" style="display:none; background:rgba(122,0,0,0.5);"></div>
     <div class="row">
       <button class="btn btn-file" onclick="document.getElementById('audio-file').click()">🎵 録音ファイルを選ぶ</button>
       <span class="status" id="file-status" style="margin-top:0;">まだ選んでいません</span>
@@ -139,6 +159,10 @@
       <button class="btn btn-judge" id="judge-btn" onclick="judge()" disabled>🤖 詐欺かどうか判定する</button>
     </div>
     <div class="result" id="judgement" style="display:none;"></div>
+    <div class="row" id="save-number-row" style="display:none; margin-top:10px;">
+      <span class="status" style="margin-top:0;">この番号を危険リストに記録しますか？</span>
+      <button class="btn btn-key" onclick="confirmSaveDangerNumber()">📌 記録する</button>
+    </div>
     <div class="hint">📌 25MB・約30分まで（MP3 / M4A / WAV / WEBM など）</div>
   </div>
 
@@ -162,6 +186,135 @@
     window.addEventListener('load', function () {
       if (getKey()) document.getElementById('settings-status').textContent = '✅ 設定済み';
     });
+
+    // ===== 危険な電話番号リスト =====
+    var DANGER_STORAGE = 'sagi_danger_numbers';
+
+    function normalizeNumber(n) { return (n || '').replace(/\D/g, ''); }
+
+    function getDangerList() {
+      try { return JSON.parse(localStorage.getItem(DANGER_STORAGE) || '[]'); }
+      catch (e) { return []; }
+    }
+
+    function saveDangerList(list) { localStorage.setItem(DANGER_STORAGE, JSON.stringify(list)); }
+
+    function findDangerEntry(number) {
+      var n = normalizeNumber(number);
+      if (!n) return null;
+      var list = getDangerList();
+      for (var i = 0; i < list.length; i++) {
+        if (normalizeNumber(list[i].number) === n) return list[i];
+      }
+      return null;
+    }
+
+    function todayStr() {
+      var d = new Date();
+      return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+    }
+
+    function renderDangerList() {
+      var list = getDangerList().slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+      var el = document.getElementById('danger-list');
+      el.innerHTML = '';
+      if (!list.length) {
+        var p = document.createElement('p');
+        p.className = 'hint';
+        p.textContent = 'まだ登録された番号はありません';
+        el.appendChild(p);
+        return;
+      }
+      list.forEach(function (item) {
+        var row = document.createElement('div');
+        row.className = 'row';
+        row.style.cssText = 'justify-content:space-between; border-bottom:1px dashed rgba(255,255,255,0.15); padding:8px 0;';
+
+        var info = document.createElement('div');
+        var strong = document.createElement('b');
+        strong.textContent = item.number;
+        info.appendChild(strong);
+        if (item.note) {
+          var noteSpan = document.createElement('span');
+          noteSpan.style.opacity = '0.8';
+          noteSpan.textContent = ' ' + item.note;
+          info.appendChild(noteSpan);
+        }
+        info.appendChild(document.createElement('br'));
+        var metaSpan = document.createElement('span');
+        metaSpan.className = 'hint';
+        metaSpan.style.margin = '0';
+        metaSpan.textContent = (item.date || '') + (item.risk ? '・危険度' + item.risk : '');
+        info.appendChild(metaSpan);
+
+        var delBtn = document.createElement('button');
+        delBtn.className = 'btn btn-ghost';
+        delBtn.textContent = '削除';
+        delBtn.onclick = function () { removeDangerNumber(item.number); };
+
+        row.appendChild(info);
+        row.appendChild(delBtn);
+        el.appendChild(row);
+      });
+    }
+
+    function removeDangerNumber(number) {
+      var n = normalizeNumber(number);
+      saveDangerList(getDangerList().filter(function (item) { return normalizeNumber(item.number) !== n; }));
+      renderDangerList();
+      showNumberWarningIfAny();
+    }
+
+    function addDangerNumber() {
+      var numberEl = document.getElementById('add-number');
+      var noteEl = document.getElementById('add-note');
+      var number = numberEl.value.trim();
+      if (!number) { alert('電話番号を入力してね'); return; }
+      var existing = findDangerEntry(number);
+      var entry = { number: number, note: noteEl.value.trim(), date: todayStr(), risk: (existing && existing.risk) || '手動登録' };
+      var n = normalizeNumber(number);
+      var list = getDangerList().filter(function (item) { return normalizeNumber(item.number) !== n; });
+      list.push(entry);
+      saveDangerList(list);
+      numberEl.value = '';
+      noteEl.value = '';
+      renderDangerList();
+      showNumberWarningIfAny();
+    }
+
+    function checkNumber() {
+      var el = document.getElementById('check-result');
+      var number = document.getElementById('check-number').value.trim();
+      el.style.display = 'block';
+      if (!number) { el.textContent = '電話番号を入力してね'; return; }
+      var entry = findDangerEntry(number);
+      if (entry) {
+        el.textContent = '⚠️ 危険な番号として登録されています（' + entry.date + '・危険度' + (entry.risk || '不明') + (entry.note ? '・' + entry.note : '') + '）';
+      } else {
+        el.textContent = '✅ この番号は登録されていません（記録がないだけで安全とは限りません）';
+      }
+    }
+
+    function showNumberWarningIfAny() {
+      var phoneEl = document.getElementById('phone-number');
+      var warnEl = document.getElementById('number-warning');
+      var entry = findDangerEntry(phoneEl.value);
+      if (entry) {
+        warnEl.style.display = 'block';
+        warnEl.textContent = '⚠️ この番号は過去に危険と判定されています（' + entry.date + '・危険度' + (entry.risk || '不明') + '）';
+      } else {
+        warnEl.style.display = 'none';
+      }
+    }
+
+    function guessPhoneNumber(filename) {
+      if (!filename) return '';
+      var digitsOnly = filename.replace(/\D/g, ' ').trim();
+      var parts = digitsOnly.split(/\s+/).filter(function (p) { return p.length >= 9 && p.length <= 11; });
+      return parts[0] || '';
+    }
+
+    window.addEventListener('load', renderDangerList);
 
     // ===== 録音ファイルを選ぶ =====
     function uploadFile(input) {
@@ -229,6 +382,14 @@
     // ===== 文字起こし（Groq Whisper）=====
     function sendForTranscribe(file) {
       var el = document.getElementById('transcript');
+      var phoneEl = document.getElementById('phone-number');
+      if (!phoneEl.value.trim()) {
+        var guess = guessPhoneNumber(file.name);
+        if (guess) phoneEl.value = guess;
+      }
+      showNumberWarningIfAny();
+      document.getElementById('save-number-row').style.display = 'none';
+
       var key = requireKey();
       if (!key) return;
       if (file.size > MAX_SIZE) {
@@ -298,11 +459,40 @@
       })
         .then(parseGroq)
         .then(function (data) {
-          out.textContent = data.choices[0].message.content;
+          var text = data.choices[0].message.content;
+          out.textContent = text;
+          offerToSaveDangerNumber(text);
         })
         .catch(function (err) {
           out.textContent = '😅 ' + friendlyError(err);
         });
+    }
+
+    var pendingRisk = null;
+
+    function offerToSaveDangerNumber(judgementText) {
+      var row = document.getElementById('save-number-row');
+      var m = judgementText.match(/危険度[】:：]?\s*([高中低])/);
+      var risk = m ? m[1] : null;
+      var number = document.getElementById('phone-number').value.trim();
+      if (!risk || (risk !== '高' && risk !== '中') || !number) {
+        row.style.display = 'none';
+        return;
+      }
+      pendingRisk = risk;
+      row.style.display = 'flex';
+    }
+
+    function confirmSaveDangerNumber() {
+      var number = document.getElementById('phone-number').value.trim();
+      if (!number || !pendingRisk) return;
+      var n = normalizeNumber(number);
+      var list = getDangerList().filter(function (item) { return normalizeNumber(item.number) !== n; });
+      list.push({ number: number, note: '通話判定で自動検出', date: todayStr(), risk: pendingRisk });
+      saveDangerList(list);
+      renderDangerList();
+      showNumberWarningIfAny();
+      document.getElementById('save-number-row').style.display = 'none';
     }
 
     // ===== Groqのレスポンス処理 =====
