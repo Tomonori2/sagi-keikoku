@@ -105,6 +105,8 @@
       <li>キャッシュカード・暗証番号・口座番号を聞かれた</li>
       <li>「今すぐ」「誰にも言わないで」と急かす・脅す</li>
       <li>「オレだけど」「風邪で声が変わった」と名乗る</li>
+      <li>「警察」「金融庁」などを名乗り、口座やキャッシュカードの話をする</li>
+      <li>「+1」など見慣れない海外の番号からかかってくる（ニセ警察官詐欺で多い手口）</li>
     </ul>
     <div class="note">→ 少しでも怪しければ、いったん電話を切って家族に相談！</div>
   </div>
@@ -282,6 +284,15 @@
       showNumberWarningIfAny();
     }
 
+    // 「+1」などの海外番号は、ニセ警察官詐欺で多く使われる着信パターン
+    // （警察庁SOS47の注意喚起より）。個別登録がなくても一般的な注意を促す。
+    function isSuspiciousInternational(number) {
+      var raw = (number || '').trim();
+      if (/^\+1\D?/.test(raw)) return true;
+      var digits = raw.replace(/\D/g, '');
+      return digits.indexOf('0101') === 0;
+    }
+
     function checkNumber() {
       var el = document.getElementById('check-result');
       var number = document.getElementById('check-number').value.trim();
@@ -290,6 +301,8 @@
       var entry = findDangerEntry(number);
       if (entry) {
         el.textContent = '⚠️ 危険な番号として登録されています（' + entry.date + '・危険度' + (entry.risk || '不明') + (entry.note ? '・' + entry.note : '') + '）';
+      } else if (isSuspiciousInternational(number)) {
+        el.textContent = '⚠️ 登録はありませんが、「+1」などの海外番号はニセ警察官詐欺で多く使われるパターンです。注意してください';
       } else {
         el.textContent = '✅ この番号は登録されていません（記録がないだけで安全とは限りません）';
       }
@@ -302,6 +315,9 @@
       if (entry) {
         warnEl.style.display = 'block';
         warnEl.textContent = '⚠️ この番号は過去に危険と判定されています（' + entry.date + '・危険度' + (entry.risk || '不明') + '）';
+      } else if (isSuspiciousInternational(phoneEl.value)) {
+        warnEl.style.display = 'block';
+        warnEl.textContent = '⚠️ 「+1」などの海外番号は、ニセ警察官詐欺で多く使われています。注意してください';
       } else {
         warnEl.style.display = 'none';
       }
