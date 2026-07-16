@@ -233,14 +233,28 @@
     }
 
     // ===== 電話アプリなどの「共有」から送られてきた録音を受け取る =====
-    function loadSharedFileIfAny() {
-      if (location.search.indexOf('shared=1') === -1) return;
-      history.replaceState(null, '', location.pathname);
+    // サービスワーカーがファイルを保存し終わるタイミングと、この画面の読み込みタイミングは
+    // 前後しうるので、?shared=1 での起動チェックと、SWからのpostMessageの両方を見て、
+    // どちらか先に来た方（かつキャッシュに実際にファイルがある方）で拾う。取りこぼし対策で
+    // 数回リトライする。
+    var sharedFileHandled = false;
 
+    function tryLoadSharedFile(attemptsLeft) {
+      if (sharedFileHandled) return;
       if (!('caches' in window)) return;
+
       caches.open('sagi-keikoku-share').then(function (cache) {
         cache.match('shared-audio-file').then(function (res) {
-          if (!res) return;
+          if (sharedFileHandled) return;
+          if (!res) {
+            if (attemptsLeft > 0) {
+              setTimeout(function () { tryLoadSharedFile(attemptsLeft - 1); }, 300);
+            } else {
+              document.getElementById('file-status').textContent = '😅 共有されたファイルを受け取れませんでした。もう一度共有し直してみてね';
+            }
+            return;
+          }
+          sharedFileHandled = true;
           cache.delete('shared-audio-file');
           var name = decodeURIComponent(res.headers.get('X-Shared-Filename') || '共有された録音');
           res.blob().then(function (blob) {
@@ -251,7 +265,19 @@
       });
     }
 
-    window.addEventListener('load', loadSharedFileIfAny);
+    window.addEventListener('load', function () {
+      if (location.search.indexOf('shared=1') === -1) return;
+      history.replaceState(null, '', location.pathname);
+      tryLoadSharedFile(6);
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', function (e) {
+        if (e.data && e.data.type === 'shared-file-ready') {
+          tryLoadSharedFile(6);
+        }
+      });
+    }
 
     function requireKey() {
       var k = getKey();
