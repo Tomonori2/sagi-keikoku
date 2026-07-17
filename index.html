@@ -69,17 +69,6 @@
     .btn-judge { background: linear-gradient(135deg, #667eea, #764ba2); }
     .btn-ghost { background: rgba(255,255,255,0.15); font-weight: normal; font-size: 13px; padding: 8px 14px; }
 
-    .call-btn {
-      display: block; width: 100%; max-width: 620px; text-align: center; text-decoration: none;
-      border: none; cursor: pointer; font-family: inherit;
-      padding: 22px; font-size: 22px; font-weight: bold; color: #fff;
-      border-radius: 20px; margin-top: 4px;
-      background: linear-gradient(135deg, #4ecdc4, #2f8f88);
-      box-shadow: 0 6px 20px rgba(0,0,0,0.25);
-      transition: transform 0.1s, opacity 0.2s;
-    }
-    .call-btn:active { transform: scale(0.97); }
-
     .status { font-size: 14px; color: rgba(255,255,255,0.9); margin-top: 10px; }
     .key-input {
       width: 100%;
@@ -116,15 +105,30 @@
       <li>キャッシュカード・暗証番号・口座番号を聞かれた</li>
       <li>「今すぐ」「誰にも言わないで」と急かす・脅す</li>
       <li>「オレだけど」「風邪で声が変わった」と名乗る</li>
+      <li>「警察」「金融庁」などを名乗り、口座やキャッシュカードの話をする</li>
+      <li>「+1」など見慣れない海外の番号からかかってくる（ニセ警察官詐欺で多い手口）</li>
+      <li>会ったことのない相手・SNSで知り合った相手から送金や投資を頼まれる（ロマンス詐欺）</li>
     </ul>
     <div class="note">→ 少しでも怪しければ、いったん電話を切って家族に相談！</div>
+    <a class="btn" href="tel:%239110" style="display:block; text-align:center; text-decoration:none; margin-top:14px; background:#7a0000;">📞 迷ったら警察相談専用電話（#9110）</a>
   </div>
 
-  <!-- 起動時に自動で「録音してます」を読み上げ。ブロックされた時だけボタンが出る -->
-  <button class="call-btn" id="speak-btn" onclick="speakWarning()" style="display:none;">🔊 録音してますと流す</button>
-  <div class="hint" style="max-width:620px; text-align:center;">
-    📢 アプリを開くと自動で「録音してます」と音声が流れます。<br>
-    相手に聞かせるには、通話を<b>スピーカーフォン（ハンズフリー）</b>にしてね
+  <!-- 危険な電話番号の記録・検索 -->
+  <div class="card" style="margin-top:16px;">
+    <div class="label">📵 危険な電話番号</div>
+    <div class="row">
+      <input type="text" class="key-input" id="check-number" placeholder="電話番号を入力して調べる" style="flex:1; min-width:160px; margin-bottom:0;" inputmode="tel">
+      <button class="btn btn-key" onclick="checkNumber()">🔍 調べる</button>
+    </div>
+    <div class="result" id="check-result" style="display:none;"></div>
+
+    <div id="danger-list" style="margin-top:14px;"></div>
+
+    <div class="row" style="margin-top:10px;">
+      <input type="text" class="key-input" id="add-number" placeholder="番号" style="flex:1; min-width:120px; margin-bottom:0;" inputmode="tel">
+      <input type="text" class="key-input" id="add-note" placeholder="メモ（任意）" style="flex:1; min-width:120px; margin-bottom:0;">
+      <button class="btn btn-ghost" onclick="addDangerNumber()">＋手動で追加</button>
+    </div>
   </div>
 
   <!-- 設定 -->
@@ -147,6 +151,8 @@
     <p style="font-size:13px; color:rgba(255,255,255,0.85); margin-bottom:12px; line-height:1.7;">
       Pixelの通話録音などの音声ファイルを選ぶと、文字にして詐欺の危険度を判定します。
     </p>
+    <input type="text" class="key-input" id="phone-number" placeholder="この録音の電話番号（わかれば・ファイル名から自動入力されることもあります）" inputmode="tel" oninput="showNumberWarningIfAny()">
+    <div class="result" id="number-warning" style="display:none; background:rgba(122,0,0,0.5);"></div>
     <div class="row">
       <button class="btn btn-file" onclick="document.getElementById('audio-file').click()">🎵 録音ファイルを選ぶ</button>
       <span class="status" id="file-status" style="margin-top:0;">まだ選んでいません</span>
@@ -157,6 +163,10 @@
       <button class="btn btn-judge" id="judge-btn" onclick="judge()" disabled>🤖 もう一度判定する</button>
     </div>
     <div class="result" id="judgement" style="display:none;"></div>
+    <div class="row" id="save-number-row" style="display:none; margin-top:10px;">
+      <span class="status" style="margin-top:0;">この番号を危険リストに記録しますか？</span>
+      <button class="btn btn-key" onclick="confirmSaveDangerNumber()">📌 記録する</button>
+    </div>
     <div class="hint">📌 25MB・約30分まで（MP3 / M4A / WAV / WEBM など）</div>
   </div>
 
@@ -181,55 +191,201 @@
       if (getKey()) document.getElementById('settings-status').textContent = '✅ 設定済み';
     });
 
-    // ===== 「録音してます」を音声で流す =====
-    // アプリを開くと自動で読み上げる。ブラウザの自動再生制限でブロックされた時だけ、
-    // 手動ボタンを表示する（保険）。
-    var WARNING_TEXT = 'この通話は、詐欺被害防止のため、すべて録音されています。';
+    // ===== 危険な電話番号リスト =====
+    var DANGER_STORAGE = 'sagi_danger_numbers';
 
-    function speakWarning() {
-      var btn = document.getElementById('speak-btn');
+    function normalizeNumber(n) { return (n || '').replace(/\D/g, ''); }
 
-      if (!('speechSynthesis' in window)) {
-        btn.style.display = 'none';
-        return;
-      }
-
-      // 連打・二重再生を防ぐため、前の読み上げを止めてから流し直す
-      speechSynthesis.cancel();
-
-      var started = false;
-      var u = new SpeechSynthesisUtterance(WARNING_TEXT);
-      u.lang = 'ja-JP';
-      u.rate = 0.9;   // 少しゆっくり、はっきり
-      u.volume = 1.0; // 最大音量
-
-      u.onstart = function () {
-        started = true;
-        btn.textContent = '🔊 流しています…';
-      };
-      u.onend = function () { btn.textContent = '🔊 もう一度流す'; };
-      u.onerror = function () { btn.textContent = '🔊 録音してますと流す'; };
-
-      speechSynthesis.speak(u);
-
-      // 3秒たっても読み上げが始まらない＝自動再生がブロックされた。ボタンを出す
-      setTimeout(function () {
-        if (!started && !speechSynthesis.speaking) {
-          btn.style.display = 'block';
-        }
-      }, 3000);
+    function getDangerList() {
+      try { return JSON.parse(localStorage.getItem(DANGER_STORAGE) || '[]'); }
+      catch (e) { return []; }
     }
 
-    // 起動したら自動で読み上げる（読み上げエンジンの準備を少し待つ）
-    window.addEventListener('load', function () {
-      setTimeout(speakWarning, 800);
-    });
+    function saveDangerList(list) { localStorage.setItem(DANGER_STORAGE, JSON.stringify(list)); }
+
+    function findDangerEntry(number) {
+      var n = normalizeNumber(number);
+      if (!n) return null;
+      var list = getDangerList();
+      for (var i = 0; i < list.length; i++) {
+        if (normalizeNumber(list[i].number) === n) return list[i];
+      }
+      return null;
+    }
+
+    function todayStr() {
+      var d = new Date();
+      return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
+    }
+
+    function renderDangerList() {
+      var list = getDangerList().slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+      var el = document.getElementById('danger-list');
+      el.innerHTML = '';
+      if (!list.length) {
+        var p = document.createElement('p');
+        p.className = 'hint';
+        p.textContent = 'まだ登録された番号はありません';
+        el.appendChild(p);
+        return;
+      }
+      list.forEach(function (item) {
+        var row = document.createElement('div');
+        row.className = 'row';
+        row.style.cssText = 'justify-content:space-between; border-bottom:1px dashed rgba(255,255,255,0.15); padding:8px 0;';
+
+        var info = document.createElement('div');
+        var strong = document.createElement('b');
+        strong.textContent = item.number;
+        info.appendChild(strong);
+        if (item.note) {
+          var noteSpan = document.createElement('span');
+          noteSpan.style.opacity = '0.8';
+          noteSpan.textContent = ' ' + item.note;
+          info.appendChild(noteSpan);
+        }
+        info.appendChild(document.createElement('br'));
+        var metaSpan = document.createElement('span');
+        metaSpan.className = 'hint';
+        metaSpan.style.margin = '0';
+        metaSpan.textContent = (item.date || '') + (item.risk ? '・危険度' + item.risk : '');
+        info.appendChild(metaSpan);
+
+        var delBtn = document.createElement('button');
+        delBtn.className = 'btn btn-ghost';
+        delBtn.textContent = '削除';
+        delBtn.onclick = function () { removeDangerNumber(item.number); };
+
+        row.appendChild(info);
+        row.appendChild(delBtn);
+        el.appendChild(row);
+      });
+    }
+
+    function removeDangerNumber(number) {
+      var n = normalizeNumber(number);
+      saveDangerList(getDangerList().filter(function (item) { return normalizeNumber(item.number) !== n; }));
+      renderDangerList();
+      showNumberWarningIfAny();
+    }
+
+    function addDangerNumber() {
+      var numberEl = document.getElementById('add-number');
+      var noteEl = document.getElementById('add-note');
+      var number = numberEl.value.trim();
+      if (!number) { alert('電話番号を入力してね'); return; }
+      var existing = findDangerEntry(number);
+      var entry = { number: number, note: noteEl.value.trim(), date: todayStr(), risk: (existing && existing.risk) || '手動登録' };
+      var n = normalizeNumber(number);
+      var list = getDangerList().filter(function (item) { return normalizeNumber(item.number) !== n; });
+      list.push(entry);
+      saveDangerList(list);
+      numberEl.value = '';
+      noteEl.value = '';
+      renderDangerList();
+      showNumberWarningIfAny();
+    }
+
+    // 「+1」などの海外番号は、ニセ警察官詐欺で多く使われる着信パターン
+    // （警察庁SOS47の注意喚起より）。個別登録がなくても一般的な注意を促す。
+    function isSuspiciousInternational(number) {
+      var raw = (number || '').trim();
+      if (/^\+1\D?/.test(raw)) return true;
+      var digits = raw.replace(/\D/g, '');
+      return digits.indexOf('0101') === 0;
+    }
+
+    function checkNumber() {
+      var el = document.getElementById('check-result');
+      var number = document.getElementById('check-number').value.trim();
+      el.style.display = 'block';
+      if (!number) { el.textContent = '電話番号を入力してね'; return; }
+      var entry = findDangerEntry(number);
+      if (entry) {
+        el.textContent = '⚠️ 危険な番号として登録されています（' + entry.date + '・危険度' + (entry.risk || '不明') + (entry.note ? '・' + entry.note : '') + '）';
+      } else if (isSuspiciousInternational(number)) {
+        el.textContent = '⚠️ 登録はありませんが、「+1」などの海外番号はニセ警察官詐欺で多く使われるパターンです。注意してください';
+      } else {
+        el.textContent = '✅ この番号は登録されていません（記録がないだけで安全とは限りません）';
+      }
+    }
+
+    function showNumberWarningIfAny() {
+      var phoneEl = document.getElementById('phone-number');
+      var warnEl = document.getElementById('number-warning');
+      var entry = findDangerEntry(phoneEl.value);
+      if (entry) {
+        warnEl.style.display = 'block';
+        warnEl.textContent = '⚠️ この番号は過去に危険と判定されています（' + entry.date + '・危険度' + (entry.risk || '不明') + '）';
+      } else if (isSuspiciousInternational(phoneEl.value)) {
+        warnEl.style.display = 'block';
+        warnEl.textContent = '⚠️ 「+1」などの海外番号は、ニセ警察官詐欺で多く使われています。注意してください';
+      } else {
+        warnEl.style.display = 'none';
+      }
+    }
+
+    function guessPhoneNumber(filename) {
+      if (!filename) return '';
+      var digitsOnly = filename.replace(/\D/g, ' ').trim();
+      var parts = digitsOnly.split(/\s+/).filter(function (p) { return p.length >= 9 && p.length <= 11; });
+      return parts[0] || '';
+    }
+
+    window.addEventListener('load', renderDangerList);
 
     // ===== 録音ファイルを選ぶ =====
     function uploadFile(input) {
       var file = input.files[0];
       if (!file) return;
       sendForTranscribe(file);
+    }
+
+    // ===== 電話アプリなどの「共有」から送られてきた録音を受け取る =====
+    // サービスワーカーがファイルを保存し終わるタイミングと、この画面の読み込みタイミングは
+    // 前後しうるので、?shared=1 での起動チェックと、SWからのpostMessageの両方を見て、
+    // どちらか先に来た方（かつキャッシュに実際にファイルがある方）で拾う。取りこぼし対策で
+    // 数回リトライする。
+    var sharedFileHandled = false;
+
+    function tryLoadSharedFile(attemptsLeft) {
+      if (sharedFileHandled) return;
+      if (!('caches' in window)) return;
+
+      caches.open('sagi-keikoku-share').then(function (cache) {
+        cache.match('shared-audio-file').then(function (res) {
+          if (sharedFileHandled) return;
+          if (!res) {
+            if (attemptsLeft > 0) {
+              setTimeout(function () { tryLoadSharedFile(attemptsLeft - 1); }, 300);
+            } else {
+              document.getElementById('file-status').textContent = '😅 共有されたファイルを受け取れませんでした。もう一度共有し直してみてね';
+            }
+            return;
+          }
+          sharedFileHandled = true;
+          cache.delete('shared-audio-file');
+          var name = decodeURIComponent(res.headers.get('X-Shared-Filename') || '共有された録音');
+          res.blob().then(function (blob) {
+            var file = new File([blob], name, { type: blob.type });
+            sendForTranscribe(file);
+          });
+        });
+      });
+    }
+
+    window.addEventListener('load', function () {
+      if (location.search.indexOf('shared=1') === -1) return;
+      history.replaceState(null, '', location.pathname);
+      tryLoadSharedFile(6);
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', function (e) {
+        if (e.data && e.data.type === 'shared-file-ready') {
+          tryLoadSharedFile(6);
+        }
+      });
     }
 
     function requireKey() {
@@ -244,6 +400,14 @@
     // ===== 文字起こし（Groq Whisper）=====
     function sendForTranscribe(file) {
       var el = document.getElementById('transcript');
+      var phoneEl = document.getElementById('phone-number');
+      if (!phoneEl.value.trim()) {
+        var guess = guessPhoneNumber(file.name);
+        if (guess) phoneEl.value = guess;
+      }
+      showNumberWarningIfAny();
+      document.getElementById('save-number-row').style.display = 'none';
+
       var key = requireKey();
       if (!key) return;
       if (file.size > MAX_SIZE) {
@@ -300,13 +464,17 @@
           messages: [
             {
               role: 'system',
-              content: 'あなたは高齢者を電話詐欺から守るアシスタントです。渡された通話の文字起こしを読み、' +
-                'オレオレ詐欺・還付金詐欺・架空請求などの特徴（お金/ATM/振込の要求、キャッシュカードや暗証番号を聞く、' +
-                '急かす・脅す、身内や役所・警察を名乗る）に照らして判定してください。\n' +
-                '出力は次の形式で、やさしい言葉で:\n' +
+              content: 'あなたは電話詐欺から人を守るアシスタントです。渡された通話の文字起こしを読み、' +
+                'オレオレ詐欺・還付金詐欺・架空請求・ニセ警察官詐欺・副業/投資詐欺・フィッシング型の電話' +
+                '（宅配便やアカウント停止を装うなど）・ロマンス詐欺などの特徴（お金/ATM/振込の要求、キャッシュカードや暗証番号・' +
+                'ワンタイムパスワードを聞く、急かす・脅す、身内や役所・警察・企業を名乗る、儲け話や高配当を持ちかける、' +
+                '会ったことのない相手が恋愛感情や親密さを利用して送金・投資・ギフトカード購入を頼む）' +
+                'に照らして、年齢を問わず判定してください。\n' +
+                '出力は次の形式で、わかりやすい言葉で:\n' +
                 '【危険度】高／中／低 のどれか\n' +
                 '【理由】3行以内\n' +
-                '【おすすめの行動】1〜2行（詐欺が疑われるなら「すぐ電話を切って家族に相談」と伝える）'
+                '【おすすめの行動】1〜2行（詐欺が疑われるなら「すぐ電話を切って家族や周囲の信頼できる人に相談」、' +
+                '危険度が高い場合はさらに「警察相談専用電話（#9110）にも相談」と伝える）'
             },
             { role: 'user', content: lastTranscript }
           ]
@@ -314,11 +482,40 @@
       })
         .then(parseGroq)
         .then(function (data) {
-          out.textContent = data.choices[0].message.content;
+          var text = data.choices[0].message.content;
+          out.textContent = text;
+          offerToSaveDangerNumber(text);
         })
         .catch(function (err) {
           out.textContent = '😅 ' + friendlyError(err);
         });
+    }
+
+    var pendingRisk = null;
+
+    function offerToSaveDangerNumber(judgementText) {
+      var row = document.getElementById('save-number-row');
+      var m = judgementText.match(/危険度[】:：]?\s*([高中低])/);
+      var risk = m ? m[1] : null;
+      var number = document.getElementById('phone-number').value.trim();
+      if (!risk || (risk !== '高' && risk !== '中') || !number) {
+        row.style.display = 'none';
+        return;
+      }
+      pendingRisk = risk;
+      row.style.display = 'flex';
+    }
+
+    function confirmSaveDangerNumber() {
+      var number = document.getElementById('phone-number').value.trim();
+      if (!number || !pendingRisk) return;
+      var n = normalizeNumber(number);
+      var list = getDangerList().filter(function (item) { return normalizeNumber(item.number) !== n; });
+      list.push({ number: number, note: '通話判定で自動検出', date: todayStr(), risk: pendingRisk });
+      saveDangerList(list);
+      renderDangerList();
+      showNumberWarningIfAny();
+      document.getElementById('save-number-row').style.display = 'none';
     }
 
     // ===== Groqのレスポンス処理 =====
