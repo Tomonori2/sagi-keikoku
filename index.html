@@ -154,7 +154,7 @@
     <input type="file" id="audio-file" accept="audio/*,video/mp4,video/webm" style="display:none;" onchange="uploadFile(this)">
     <div class="result" id="transcript">（ここに文字起こしが表示されます）</div>
     <div class="row" style="margin-top:10px;">
-      <button class="btn btn-judge" id="judge-btn" onclick="judge()" disabled>🤖 詐欺かどうか判定する</button>
+      <button class="btn btn-judge" id="judge-btn" onclick="judge()" disabled>🤖 もう一度判定する</button>
     </div>
     <div class="result" id="judgement" style="display:none;"></div>
     <div class="hint">📌 25MB・約30分まで（MP3 / M4A / WAV / WEBM など）</div>
@@ -272,6 +272,7 @@
           lastTranscript = (data.text || '').trim();
           el.textContent = lastTranscript || '（音声を認識できませんでした）';
           document.getElementById('judge-btn').disabled = !lastTranscript;
+          if (lastTranscript) judge(); // 文字起こしできたら、そのまま自動で判定へ
         })
         .catch(function (err) {
           el.textContent = '😅 ' + friendlyError(err);
