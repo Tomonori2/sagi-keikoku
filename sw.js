@@ -1,8 +1,8 @@
 // 詐欺電話撃退アプリ – サービスワーカー（スマホアプリ化用）
-const CACHE = 'sagi-keikoku-v3';
+const CACHE = 'sagi-keikoku-v6';
 const SHARE_CACHE = 'sagi-keikoku-share';
 const SHARE_KEY = 'shared-audio-file';
-const SHELL = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png'];
+const SHELL = ['./', 'index.html', 'manifest.json', 'icon-192.png', 'icon-512.png', 'news_data.js', 'curated_news.js'];
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
