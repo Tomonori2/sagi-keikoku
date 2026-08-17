@@ -88,6 +88,17 @@
     .hint a { color: #ffd93d; }
     .spin { display: inline-block; animation: spin 1s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    .risk-badge {
+      display: inline-block; font-size: 20px; font-weight: bold;
+      padding: 10px 20px; border-radius: 12px; margin-bottom: 10px;
+    }
+    .risk-high { background: #e53935; color: #fff; }
+    .risk-mid  { background: #ffb300; color: #3a2600; }
+    .risk-low  { background: #43a047; color: #fff; }
+
+    .result-danger { background: rgba(200,30,30,0.55) !important; }
+    .result-warn   { background: rgba(230,140,20,0.5) !important; }
   </style>
 </head>
 <body>
@@ -136,13 +147,18 @@
     </div>
     <div class="result" id="check-result" style="display:none;"></div>
 
-    <div id="danger-list" style="margin-top:14px;"></div>
+    <div style="margin-top:14px; font-size:13px; opacity:0.85;">✅ 確認済み（みんなで共有・運営確認済み）</div>
+    <div id="curated-danger-list" style="margin-top:6px;"></div>
+
+    <div style="margin-top:14px; font-size:13px; opacity:0.85;">📝 自分で記録した番号（この端末だけ）</div>
+    <div id="danger-list" style="margin-top:6px;"></div>
 
     <div class="row" style="margin-top:10px;">
       <input type="text" class="key-input" id="add-number" placeholder="番号" style="flex:1; min-width:120px; margin-bottom:0;" inputmode="tel">
       <input type="text" class="key-input" id="add-note" placeholder="メモ（任意）" style="flex:1; min-width:120px; margin-bottom:0;">
       <button class="btn btn-ghost" onclick="addDangerNumber()">＋手動で追加</button>
     </div>
+    <p class="hint" style="margin-top:10px;">💡 危険な番号を見つけたら <a href="https://github.com/Tomonori2/sagi-keikoku/issues" target="_blank" rel="noopener">Issues</a> で教えてください。確認のうえ、みんなに共有します。</p>
   </div>
 
   <!-- 詐欺情報（AIの参考にする） -->
@@ -198,6 +214,7 @@
 
   <script src="news_data.js" onerror="window.SCAM_NEWS = []"></script>
   <script src="curated_news.js" onerror="window.CURATED_NEWS = []"></script>
+  <script src="curated_danger_numbers.js" onerror="window.CURATED_DANGER_NUMBERS = []"></script>
   <script>
     var GROQ_BASE = 'https://api.groq.com/openai/v1';
     var KEY_STORAGE = 'sagi_groq_key';
@@ -231,63 +248,89 @@
 
     function saveDangerList(list) { localStorage.setItem(DANGER_STORAGE, JSON.stringify(list)); }
 
+    function getCuratedDangerList() {
+      return (typeof CURATED_DANGER_NUMBERS !== 'undefined') ? CURATED_DANGER_NUMBERS : [];
+    }
+
+    // 確認済み（みんな共有）を優先し、なければ自分の端末の記録を見る
     function findDangerEntry(number) {
       var n = normalizeNumber(number);
       if (!n) return null;
+      var curated = getCuratedDangerList();
+      for (var i = 0; i < curated.length; i++) {
+        if (normalizeNumber(curated[i].number) === n) {
+          return { number: curated[i].number, note: curated[i].note, date: curated[i].date, risk: curated[i].risk, source: 'curated' };
+        }
+      }
       var list = getDangerList();
-      for (var i = 0; i < list.length; i++) {
-        if (normalizeNumber(list[i].number) === n) return list[i];
+      for (var j = 0; j < list.length; j++) {
+        if (normalizeNumber(list[j].number) === n) {
+          return { number: list[j].number, note: list[j].note, date: list[j].date, risk: list[j].risk, source: 'local' };
+        }
       }
       return null;
     }
+
+    function sourceLabel(entry) { return entry.source === 'curated' ? 'みんなで共有・確認済み' : '自分の記録'; }
 
     function todayStr() {
       var d = new Date();
       return d.getFullYear() + '/' + (d.getMonth() + 1) + '/' + d.getDate();
     }
 
-    function renderDangerList() {
-      var list = getDangerList().slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
-      var el = document.getElementById('danger-list');
-      el.innerHTML = '';
-      if (!list.length) {
-        var p = document.createElement('p');
-        p.className = 'hint';
-        p.textContent = 'まだ登録された番号はありません';
-        el.appendChild(p);
-        return;
+    function renderNumberRow(container, item, deletable) {
+      var row = document.createElement('div');
+      row.className = 'row';
+      row.style.cssText = 'justify-content:space-between; border-bottom:1px dashed rgba(255,255,255,0.15); padding:8px 0;';
+
+      var info = document.createElement('div');
+      var strong = document.createElement('b');
+      strong.textContent = item.number;
+      info.appendChild(strong);
+      if (item.note) {
+        var noteSpan = document.createElement('span');
+        noteSpan.style.opacity = '0.8';
+        noteSpan.textContent = ' ' + item.note;
+        info.appendChild(noteSpan);
       }
-      list.forEach(function (item) {
-        var row = document.createElement('div');
-        row.className = 'row';
-        row.style.cssText = 'justify-content:space-between; border-bottom:1px dashed rgba(255,255,255,0.15); padding:8px 0;';
+      info.appendChild(document.createElement('br'));
+      var metaSpan = document.createElement('span');
+      metaSpan.className = 'hint';
+      metaSpan.style.margin = '0';
+      metaSpan.textContent = (item.date || '') + (item.risk ? '・危険度' + item.risk : '');
+      info.appendChild(metaSpan);
+      row.appendChild(info);
 
-        var info = document.createElement('div');
-        var strong = document.createElement('b');
-        strong.textContent = item.number;
-        info.appendChild(strong);
-        if (item.note) {
-          var noteSpan = document.createElement('span');
-          noteSpan.style.opacity = '0.8';
-          noteSpan.textContent = ' ' + item.note;
-          info.appendChild(noteSpan);
-        }
-        info.appendChild(document.createElement('br'));
-        var metaSpan = document.createElement('span');
-        metaSpan.className = 'hint';
-        metaSpan.style.margin = '0';
-        metaSpan.textContent = (item.date || '') + (item.risk ? '・危険度' + item.risk : '');
-        info.appendChild(metaSpan);
-
+      if (deletable) {
         var delBtn = document.createElement('button');
         delBtn.className = 'btn btn-ghost';
         delBtn.textContent = '削除';
         delBtn.onclick = function () { removeDangerNumber(item.number); };
-
-        row.appendChild(info);
         row.appendChild(delBtn);
-        el.appendChild(row);
-      });
+      }
+      container.appendChild(row);
+    }
+
+    function renderNumberList(elId, list, deletable, emptyText) {
+      var el = document.getElementById(elId);
+      el.innerHTML = '';
+      if (!list.length) {
+        var p = document.createElement('p');
+        p.className = 'hint';
+        p.textContent = emptyText;
+        el.appendChild(p);
+        return;
+      }
+      list.forEach(function (item) { renderNumberRow(el, item, deletable); });
+    }
+
+    function renderDangerList() {
+      var list = getDangerList().slice().sort(function (a, b) { return (b.date || '').localeCompare(a.date || ''); });
+      renderNumberList('danger-list', list, true, 'まだ登録された番号はありません');
+    }
+
+    function renderCuratedDangerList() {
+      renderNumberList('curated-danger-list', getCuratedDangerList(), false, 'まだ確認された番号はありません');
     }
 
     function removeDangerNumber(number) {
@@ -323,18 +366,24 @@
       return digits.indexOf('0101') === 0;
     }
 
+    function setResultBox(el, text, level) {
+      el.style.display = 'block';
+      el.textContent = text;
+      el.classList.remove('result-danger', 'result-warn');
+      if (level) el.classList.add('result-' + level);
+    }
+
     function checkNumber() {
       var el = document.getElementById('check-result');
       var number = document.getElementById('check-number').value.trim();
-      el.style.display = 'block';
-      if (!number) { el.textContent = '電話番号を入力してね'; return; }
+      if (!number) { setResultBox(el, '電話番号を入力してね', null); return; }
       var entry = findDangerEntry(number);
       if (entry) {
-        el.textContent = '⚠️ 危険な番号として登録されています（' + entry.date + '・危険度' + (entry.risk || '不明') + (entry.note ? '・' + entry.note : '') + '）';
+        setResultBox(el, '⚠️ 危険な番号として登録されています（' + sourceLabel(entry) + '・' + entry.date + '・危険度' + (entry.risk || '不明') + (entry.note ? '・' + entry.note : '') + '）', 'danger');
       } else if (isSuspiciousInternational(number)) {
-        el.textContent = '⚠️ 登録はありませんが、「+1」などの海外番号はニセ警察官詐欺で多く使われるパターンです。注意してください';
+        setResultBox(el, '⚠️ 登録はありませんが、「+1」などの海外番号はニセ警察官詐欺で多く使われるパターンです。注意してください', 'warn');
       } else {
-        el.textContent = '✅ この番号は登録されていません（記録がないだけで安全とは限りません）';
+        setResultBox(el, '✅ この番号は登録されていません（記録がないだけで安全とは限りません）', null);
       }
     }
 
@@ -343,11 +392,9 @@
       var warnEl = document.getElementById('number-warning');
       var entry = findDangerEntry(phoneEl.value);
       if (entry) {
-        warnEl.style.display = 'block';
-        warnEl.textContent = '⚠️ この番号は過去に危険と判定されています（' + entry.date + '・危険度' + (entry.risk || '不明') + '）';
+        setResultBox(warnEl, '⚠️ この番号は過去に危険と判定されています（' + sourceLabel(entry) + '・' + entry.date + '・危険度' + (entry.risk || '不明') + '）', 'danger');
       } else if (isSuspiciousInternational(phoneEl.value)) {
-        warnEl.style.display = 'block';
-        warnEl.textContent = '⚠️ 「+1」などの海外番号は、ニセ警察官詐欺で多く使われています。注意してください';
+        setResultBox(warnEl, '⚠️ 「+1」などの海外番号は、ニセ警察官詐欺で多く使われています。注意してください', 'warn');
       } else {
         warnEl.style.display = 'none';
       }
@@ -361,6 +408,7 @@
     }
 
     window.addEventListener('load', renderDangerList);
+    window.addEventListener('load', renderCuratedDangerList);
 
     // ===== 録音ファイルを選ぶ =====
     function uploadFile(input) {
@@ -551,7 +599,7 @@
         .then(parseGroq)
         .then(function (data) {
           var text = data.choices[0].message.content;
-          out.textContent = text;
+          renderJudgement(out, text);
           offerToSaveDangerNumber(text);
         })
         .catch(function (err) {
@@ -559,12 +607,31 @@
         });
     }
 
+    function extractRisk(judgementText) {
+      var m = judgementText.match(/危険度[】:：]?\s*([高中低])/);
+      return m ? m[1] : null;
+    }
+
+    function renderJudgement(out, text) {
+      out.innerHTML = '';
+      var risk = extractRisk(text);
+      if (risk) {
+        var badge = document.createElement('div');
+        badge.className = 'risk-badge risk-' + (risk === '高' ? 'high' : risk === '中' ? 'mid' : 'low');
+        badge.textContent = (risk === '高' ? '🚨 危険度：高' : risk === '中' ? '⚠️ 危険度：中' : '✅ 危険度：低');
+        out.appendChild(badge);
+      }
+      var body = document.createElement('div');
+      body.style.whiteSpace = 'pre-wrap';
+      body.textContent = text;
+      out.appendChild(body);
+    }
+
     var pendingRisk = null;
 
     function offerToSaveDangerNumber(judgementText) {
       var row = document.getElementById('save-number-row');
-      var m = judgementText.match(/危険度[】:：]?\s*([高中低])/);
-      var risk = m ? m[1] : null;
+      var risk = extractRisk(judgementText);
       var number = document.getElementById('phone-number').value.trim();
       if (!risk || (risk !== '高' && risk !== '中') || !number) {
         row.style.display = 'none';

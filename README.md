@@ -35,6 +35,7 @@
 - Web Share Target 機能で、電話アプリなどから録音ファイルを「共有」で直接受け取れる
 - `news_data.js`：警察庁SOS47ページから `fetch_scam_news.py` が毎朝自動取得（Windowsタスクスケジューラ）
 - `curated_news.js`：運営が確認して追加した情報（会話ベースで更新・全ユーザー共通）
+- `curated_danger_numbers.js`：運営が確認した危険な電話番号（[Issues](../../issues)からの報告をもとに会話ベースで更新・全ユーザー共通）。手動で登録した番号は端末内の`localStorage`のみに保存
 
 ## フィードバック
 
